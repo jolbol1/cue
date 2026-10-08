@@ -25,8 +25,8 @@ Point Cue at a folder of `.md` files, pick a script, and read it on your prompte
 ## Install
 
 ```sh
-git clone https://github.com/jolbol1/md-teleprompter.git
-cd md-teleprompter
+git clone https://github.com/jolbol1/cue.git
+cd cue
 ./scripts/build.sh
 open dist/Cue.app
 ```
