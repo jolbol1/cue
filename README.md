@@ -140,7 +140,7 @@ Run the core checks (no Xcode or XCTest needed):
 
 They cover the folder tree, search and sorting, Markdown filtering, incomplete fences, Windows line endings, pedal report decoding, time-based scrolling and looping, and reading-area alignment.
 
-`scripts/build.sh` passes the installed SDK version to the linker. Without it, SwiftPM records the macOS 14 deployment target as the SDK, and newer macOS releases run the app in compatibility mode with the older design. It also accepts `CUE_UNIVERSAL=1` (Apple silicon + Intel), `CUE_VERSION` and `CUE_BUILD` for release-style builds.
+`scripts/build.sh` stamps the installed SDK version into the binary with `vtool`. Without it, SwiftPM records the macOS 14 deployment target as the SDK, and newer macOS releases run the app in compatibility mode with the older design. It also accepts `CUE_UNIVERSAL=1` (Apple silicon + Intel), `CUE_VERSION` and `CUE_BUILD` for release-style builds.
 
 ### Releases
 
