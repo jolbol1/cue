@@ -3,6 +3,14 @@ name: Release
 # Every push to main that changes the app publishes a new version.
 # Versions bump the patch number by default; put #minor or #major in a commit
 # message to bump those instead, or run this workflow manually to choose.
+#
+# Releases are signed with a Developer ID and notarized when these secrets exist:
+#   DEVELOPER_ID_P12_BASE64   base64 of the exported "Developer ID Application" .p12
+#   DEVELOPER_ID_P12_PASSWORD password for that .p12
+#   NOTARY_KEY_P8             contents of an App Store Connect API key (AuthKey_XXXX.p8)
+#   NOTARY_KEY_ID             that key's ID
+#   NOTARY_ISSUER_ID          the App Store Connect issuer ID
+# Without them, releases are ad-hoc signed and macOS asks users to approve the first launch.
 on:
   push:
     branches: [main]
@@ -11,6 +19,8 @@ on:
       - "Resources/**"
       - "Package.swift"
       - "scripts/build.sh"
+      - "scripts/package.sh"
+      - "scripts/dmg-settings.py"
       - ".github/workflows/release.yml"
   workflow_dispatch:
     inputs:
@@ -31,6 +41,9 @@ jobs:
   release:
     # Cue uses macOS 26 APIs and needs the macOS 26 SDK (Xcode 26) to build.
     runs-on: macos-26
+    env:
+      # Step conditions can't read secrets directly.
+      SIGNING: ${{ secrets.DEVELOPER_ID_P12_BASE64 != '' && secrets.NOTARY_KEY_P8 != '' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -41,6 +54,7 @@ jobs:
           xcodebuild -version
           swift --version
           echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+          echo "Developer ID signing: $SIGNING"
 
       - name: Test
         run: ./scripts/test.sh
@@ -71,40 +85,107 @@ jobs:
           echo "Releasing $next (previous: ${latest:-none})"
           echo "version=$next" >> "$GITHUB_OUTPUT"
 
+      - name: Install dmgbuild
+        run: |
+          python3 -m venv "$RUNNER_TEMP/dmgbuild"
+          "$RUNNER_TEMP/dmgbuild/bin/pip" install --quiet dmgbuild==1.6.5
+          echo "$RUNNER_TEMP/dmgbuild/bin" >> "$GITHUB_PATH"
+
+      - name: Import signing certificate
+        id: signing
+        if: env.SIGNING == 'true'
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(openssl rand -base64 24)
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          base64 --decode <<< "$P12_BASE64" > "$RUNNER_TEMP/developer-id.p12"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$P12_PASSWORD" -f pkcs12 -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/developer-id.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -v -p codesigning "$keychain" | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
+          if [[ -z "$identity" ]]; then echo "::error::No Developer ID Application identity in the .p12"; exit 1; fi
+          echo "Signing as $identity"
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+
       - name: Build
         env:
           CUE_UNIVERSAL: "1"
           CUE_VERSION: ${{ steps.version.outputs.version }}
           CUE_BUILD: ${{ github.run_number }}
+          CUE_SIGN_IDENTITY: ${{ steps.signing.outputs.identity }}
         run: ./scripts/build.sh
 
       - name: Package
         env:
+          CUE_VERSION: ${{ steps.version.outputs.version }}
+          CUE_SIGN_IDENTITY: ${{ steps.signing.outputs.identity }}
+        run: ./scripts/package.sh
+
+      - name: Notarize
+        if: env.SIGNING == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          dmg="dist/Cue-$VERSION.dmg"
+          key="$RUNNER_TEMP/notary.p8"
+          printf '%s\n' "$NOTARY_KEY_P8" > "$key"
+          result=$(xcrun notarytool submit "$dmg" --key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+            --wait --timeout 45m --output-format json)
+          echo "$result"
+          status=$(jq -r '.status // "unknown"' <<< "$result")
+          if [[ "$status" != "Accepted" ]]; then
+            id=$(jq -r '.id // empty' <<< "$result")
+            [[ -n "$id" ]] && xcrun notarytool log "$id" --key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID"
+            rm "$key"
+            echo "::error::Notarization finished with status: $status"
+            exit 1
+          fi
+          rm "$key"
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose "$dmg"
+
+      - name: Checksum
+        env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          ditto -c -k --keepParent dist/Cue.app "Cue-$VERSION.zip"
-          shasum -a 256 "Cue-$VERSION.zip" | tee "Cue-$VERSION.zip.sha256"
+          cd dist
+          shasum -a 256 "Cue-$VERSION.dmg" | tee "Cue-$VERSION.dmg.sha256"
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          cat > notes.md <<'EOF'
+          if [[ "$SIGNING" == "true" ]]; then
+            first_launch="Cue is signed with a Developer ID and notarized by Apple, so it opens like any other app."
+          else
+            first_launch="This build isn't notarized, so the first time you open it, macOS will block it. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**, or run \`xattr -dr com.apple.quarantine /Applications/Cue.app\`. After updating, you may need to turn Cue's **Input Monitoring** permission off and on again for the Stream Deck Pedal."
+          fi
+          cat > notes.md <<EOF
           ## Install
 
-          1. Download **Cue-VERSION.zip** below and unzip it.
-          2. Move **Cue.app** to your Applications folder.
-          3. Cue isn't notarized, so the first time you open it, macOS will block it. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Alternatively, run:
-             ```sh
-             xattr -dr com.apple.quarantine /Applications/Cue.app
-             ```
+          1. Download **Cue-$VERSION.dmg** below and open it.
+          2. Drag **Cue** onto the **Applications** folder.
+          3. $first_launch
 
-          Requires macOS 14 or later. Runs natively on Apple silicon and Intel Macs. After updating, you may need to turn Cue's **Input Monitoring** permission off and on again for the Stream Deck Pedal.
+          Requires macOS 14 or later. Runs natively on Apple silicon and Intel Macs.
           EOF
-          sed -i '' "s/VERSION/$VERSION/" notes.md
-          gh release create "v$VERSION" "Cue-$VERSION.zip" "Cue-$VERSION.zip.sha256" \
+          gh release create "v$VERSION" "dist/Cue-$VERSION.dmg" "dist/Cue-$VERSION.dmg.sha256" \
             --target "$GITHUB_SHA" \
             --title "Cue $VERSION" \
             --notes-file notes.md \
             --generate-notes
+
+      - name: Remove signing keychain
+        if: always() && env.SIGNING == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

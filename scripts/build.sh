@@ -3,6 +3,7 @@
 #   CUE_UNIVERSAL=1   build for both Apple silicon and Intel
 #   CUE_VERSION=1.2.3 stamp the marketing version (CFBundleShortVersionString)
 #   CUE_BUILD=42      stamp the build number (CFBundleVersion)
+#   CUE_SIGN_IDENTITY="Developer ID Application: …"  sign for distribution (default: ad-hoc)
 set -euo pipefail
 cd "${0:A:h:h}"
 export CLANG_MODULE_CACHE_PATH="${TMPDIR:-/tmp}/cue-clang-cache"
@@ -21,5 +22,12 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 if [[ -n "${CUE_VERSION:-}" ]]; then /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $CUE_VERSION" "$APP/Contents/Info.plist"; fi
 if [[ -n "${CUE_BUILD:-}" ]]; then /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $CUE_BUILD" "$APP/Contents/Info.plist"; fi
 if [[ -f Resources/Cue.icns ]]; then cp Resources/Cue.icns "$APP/Contents/Resources/Cue.icns"; fi
-codesign --force --sign - --identifier com.james.cue --entitlements Resources/Cue.entitlements "$APP"
+IDENTITY="${CUE_SIGN_IDENTITY:--}"
+if [[ "$IDENTITY" == "-" ]]; then
+  codesign --force --sign - --identifier com.james.cue --entitlements Resources/Cue.entitlements "$APP"
+else
+  # Notarization requires the hardened runtime and a secure timestamp.
+  codesign --force --sign "$IDENTITY" --options runtime --timestamp --identifier com.james.cue \
+    --entitlements Resources/Cue.entitlements "$APP"
+fi
 echo "Built $APP"

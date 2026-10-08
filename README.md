@@ -26,9 +26,9 @@ Point Cue at a folder of `.md` files, pick a script, and read it on your prompte
 
 ### Download
 
-Get the latest **Cue-x.y.z.zip** from [Releases](https://github.com/jolbol1/cue/releases/latest), unzip it, and move **Cue.app** to Applications.
+Get the latest **Cue-x.y.z.dmg** from [Releases](https://github.com/jolbol1/cue/releases/latest), open it, and drag **Cue** onto **Applications**.
 
-Cue isn't notarized, so macOS blocks it the first time you open it. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Alternatively, run `xattr -dr com.apple.quarantine /Applications/Cue.app`. After updating, you may need to turn Cue's **Input Monitoring** permission off and on again for the pedal.
+Releases aren't notarized yet, so macOS blocks Cue the first time you open it. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Alternatively, run `xattr -dr com.apple.quarantine /Applications/Cue.app`. After updating, you may need to turn Cue's **Input Monitoring** permission off and on again for the pedal.
 
 ### Build from source
 
@@ -144,11 +144,23 @@ They cover the folder tree, search and sorting, Markdown filtering, incomplete f
 
 ### Releases
 
-[`.github/workflows/release.yml`](.github/workflows/release.yml) publishes a release automatically whenever a push to `main` changes the app (`Sources/`, `Resources/`, `Package.swift` or `scripts/build.sh`). It runs the checks, builds a universal app on a macOS 26 runner, and attaches a zip with release notes generated from the commits.
+[`.github/workflows/release.yml`](.github/workflows/release.yml) publishes a release automatically whenever a push to `main` changes the app (`Sources/`, `Resources/`, `Package.swift` or `scripts/build.sh`). It runs the checks, builds a universal app on a macOS 26 runner, packages it as a drag-to-Applications DMG with `scripts/package.sh` (which uses [dmgbuild](https://github.com/dmgbuild/dmgbuild)), and publishes it with release notes generated from the commits.
 
 - **Version numbers** bump the patch by default (1.0.0 → 1.0.1).
 - **Bigger bumps:** put `#minor` or `#major` anywhere in a commit message.
 - **Manual releases:** run the workflow from the Actions tab and choose the bump.
+
+#### Signing and notarization
+
+When these repository secrets are set, the workflow signs Cue with a Developer ID (hardened runtime) and has Apple notarize and staple the DMG. Without them, releases are ad-hoc signed.
+
+| Secret | Value |
+|---|---|
+| `DEVELOPER_ID_P12_BASE64` | Your **Developer ID Application** certificate and private key, exported from Keychain Access as a `.p12`, then base64-encoded |
+| `DEVELOPER_ID_P12_PASSWORD` | The password you set when exporting the `.p12` |
+| `NOTARY_KEY_P8` | The contents of an App Store Connect API key file (`AuthKey_XXXXXXXXXX.p8`) |
+| `NOTARY_KEY_ID` | That API key's ID |
+| `NOTARY_ISSUER_ID` | The issuer ID shown above the list of App Store Connect API keys |
 
 ## Acknowledgements
 
