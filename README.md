@@ -18,11 +18,19 @@ Point Cue at a folder of `.md` files, pick a script, and read it on your prompte
 
 ## Requirements
 
-- macOS 14 Sonoma or later. Cue adopts the current system design on newer releases.
-- Xcode or the Xcode Command Line Tools (Swift 5.9 or later) to build.
+- macOS 14 Sonoma or later, on Apple silicon or Intel. Cue adopts the current system design on newer releases.
+- To build from source: Xcode 26 or later, or its Command Line Tools (for the macOS 26 SDK).
 - Optional: an Elgato Prompter (or any second display) and an Elgato Stream Deck Pedal.
 
 ## Install
+
+### Download
+
+Get the latest **Cue-x.y.z.zip** from [Releases](https://github.com/jolbol1/cue/releases/latest), unzip it, and move **Cue.app** to Applications.
+
+Cue isn't notarized, so macOS blocks it the first time you open it. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Alternatively, run `xattr -dr com.apple.quarantine /Applications/Cue.app`. After updating, you may need to turn Cue's **Input Monitoring** permission off and on again for the pedal.
+
+### Build from source
 
 ```sh
 git clone https://github.com/jolbol1/cue.git
@@ -31,7 +39,7 @@ cd cue
 open dist/Cue.app
 ```
 
-The build produces `dist/Cue.app`, which you can move to `/Applications`. It's ad-hoc signed for your Mac, not notarized for distribution. Keep the app in one place after granting macOS permissions, because rebuilding or moving it can require granting them again.
+The build produces `dist/Cue.app`, which you can move to `/Applications`. It's ad-hoc signed for your Mac. Keep the app in one place after granting macOS permissions, because rebuilding or moving it can require granting them again.
 
 ## Getting started
 
@@ -132,7 +140,15 @@ Run the core checks (no Xcode or XCTest needed):
 
 They cover the folder tree, search and sorting, Markdown filtering, incomplete fences, Windows line endings, pedal report decoding, time-based scrolling and looping, and reading-area alignment.
 
-`scripts/build.sh` passes the installed SDK version to the linker. Without it, SwiftPM records the macOS 14 deployment target as the SDK, and newer macOS releases run the app in compatibility mode with the older design.
+`scripts/build.sh` passes the installed SDK version to the linker. Without it, SwiftPM records the macOS 14 deployment target as the SDK, and newer macOS releases run the app in compatibility mode with the older design. It also accepts `CUE_UNIVERSAL=1` (Apple silicon + Intel), `CUE_VERSION` and `CUE_BUILD` for release-style builds.
+
+### Releases
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) publishes a release automatically whenever a push to `main` changes the app (`Sources/`, `Resources/`, `Package.swift` or `scripts/build.sh`). It runs the checks, builds a universal app on a macOS 26 runner, and attaches a zip with release notes generated from the commits.
+
+- **Version numbers** bump the patch by default (1.0.0 → 1.0.1).
+- **Bigger bumps:** put `#minor` or `#major` anywhere in a commit message.
+- **Manual releases:** run the workflow from the Actions tab and choose the bump.
 
 ## Acknowledgements
 
