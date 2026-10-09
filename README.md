@@ -28,7 +28,7 @@ Point Cue at a folder of `.md` files, pick a script, and read it on your prompte
 
 Get the latest **Cue-x.y.z.dmg** from [Releases](https://github.com/jolbol1/cue/releases/latest), open it, and drag **Cue** onto **Applications**.
 
-Releases aren't notarized yet, so macOS blocks Cue the first time you open it. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Alternatively, run `xattr -dr com.apple.quarantine /Applications/Cue.app`. After updating, you may need to turn Cue's **Input Monitoring** permission off and on again for the pedal.
+Releases are signed with a Developer ID and notarized by Apple, so Cue opens like any other downloaded app. Version 1.0.1 and earlier weren't notarized; if macOS blocks one of those, click **Open Anyway** in **System Settings → Privacy & Security**.
 
 ### Build from source
 
@@ -152,7 +152,7 @@ They cover the folder tree, search and sorting, Markdown filtering, incomplete f
 
 #### Signing and notarization
 
-When these repository secrets are set, the workflow signs Cue with a Developer ID (hardened runtime) and has Apple notarize and staple the DMG. Without them, releases are ad-hoc signed.
+When these repository secrets are set, the workflow signs Cue with a Developer ID (hardened runtime) and has Apple notarize and staple the DMG. Without them, releases are ad-hoc signed. Developer ID certificates expire: after renewing, export the new certificate and update both `DEVELOPER_ID_*` secrets.
 
 | Secret | Value |
 |---|---|
