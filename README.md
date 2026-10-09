@@ -28,7 +28,7 @@ Point Cue at a folder of `.md` files, pick a script, and read it on your prompte
 
 Get the latest **Cue-x.y.z.dmg** from [Releases](https://github.com/jolbol1/cue/releases/latest), open it, and drag **Cue** onto **Applications**.
 
-Releases are signed with a Developer ID and notarized by Apple, so Cue opens like any other downloaded app. Version 1.0.1 and earlier weren't notarized; if macOS blocks one of those, click **Open Anyway** in **System Settings → Privacy & Security**.
+Releases are signed with a Developer ID and notarized by Apple, so Cue opens like any other downloaded app.
 
 ### Build from source
 
